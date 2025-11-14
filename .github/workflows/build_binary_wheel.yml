@@ -92,7 +92,18 @@ jobs:
 
       - name: Install build dependencies
         run: |
+          pip install --upgrade pip
           pip install wheel setuptools ninja
+        shell: powershell
+
+      - name: Install NumPy
+        run: |
+          pip install numpy==1.26.4
+        shell: powershell
+
+      - name: Verify PyTorch CUDA
+        run: |
+          python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}')"
         shell: powershell
 
       - name: Build binary wheel
