@@ -33,9 +33,11 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install CUDA Toolkit
-        uses: Jimver/cuda-toolkit@v0.2.21
+        uses: Jimver/cuda-toolkit@v0.2.29
         with:
           cuda: '11.8.0'
+          use-github-cache: 'false'
+          use-local-cache: 'false'
 
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
