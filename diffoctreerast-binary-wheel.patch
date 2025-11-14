@@ -1,0 +1,202 @@
+From 8ab3088d564705bb11119e633836bff09f01ca0c Mon Sep 17 00:00:00 2001
+From: CI Build <build@ci.local>
+Date: Fri, 14 Nov 2025 12:23:17 +0000
+Subject: [PATCH] Add Windows binary wheel build workflow
+
+- Add GitHub Actions workflow for building Windows binary wheel
+- Add Windows MSVC + CUDA 11.8 compatibility flags to setup.py
+- Configure for PyTorch 2.2.2 with CUDA 11.8
+- Target Python 3.11 on Windows AMD64
+---
+ .github/workflows/build_binary_wheel.yml | 126 +++++++++++++++++++++++
+ setup.py                                 |  32 +++++-
+ 2 files changed, 155 insertions(+), 3 deletions(-)
+ create mode 100644 .github/workflows/build_binary_wheel.yml
+
+diff --git a/.github/workflows/build_binary_wheel.yml b/.github/workflows/build_binary_wheel.yml
+new file mode 100644
+index 0000000..21acf87
+--- /dev/null
++++ b/.github/workflows/build_binary_wheel.yml
+@@ -0,0 +1,126 @@
++name: Build Binary Wheel (Windows)
++
++on:
++  push:
++    branches: [ main, master ]
++  pull_request:
++    branches: [ main, master ]
++  workflow_dispatch:
++
++jobs:
++  build-windows-wheel:
++    runs-on: windows-latest
++
++    steps:
++      - name: Checkout code
++        uses: actions/checkout@v4
++        with:
++          submodules: recursive  # Important: initialize glm submodule
++
++      - name: Set up Python 3.11
++        uses: actions/setup-python@v5
++        with:
++          python-version: '3.11'
++
++      - name: Install CUDA Toolkit
++        uses: Jimver/cuda-toolkit@v0.2.21
++        with:
++          cuda: '11.8.0'
++
++      - name: Set up MSVC environment
++        uses: ilammy/msvc-dev-cmd@v1
++
++      - name: Verify MSVC setup
++        run: |
++          Write-Host "=== Setting up MSVC environment ==="
++          Write-Host "Visual Studio path: $env:VSINSTALLDIR"
++          Write-Host ""
++          Write-Host "Verifying cl.exe is now in PATH:"
++          where.exe cl.exe
++        shell: powershell
++
++      - name: Install PyTorch
++        run: |
++          Write-Host "=== Installing PyTorch ==="
++          pip install torch==2.2.2 --extra-index-url https://download.pytorch.org/whl/cu118
++          python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
++        shell: powershell
++
++      - name: Install build dependencies
++        run: |
++          pip install wheel setuptools ninja
++        shell: powershell
++
++      - name: Build binary wheel
++        run: |
++          Write-Host "=== Building binary wheel with CUDA extensions ==="
++          Write-Host "Build environment:"
++          Write-Host "  CUDA_PATH: $env:CUDA_PATH"
++          Write-Host "  TORCH_CUDA_ARCH_LIST: $env:TORCH_CUDA_ARCH_LIST"
++          Write-Host "  MAX_JOBS: $env:MAX_JOBS"
++          Write-Host ""
++
++          python setup.py bdist_wheel > build.log 2>&1
++          $buildExitCode = $LASTEXITCODE
++
++          Write-Host "`n=== Build Output ==="
++          Get-Content build.log
++
++          if ($buildExitCode -ne 0) {
++              Write-Host "`n=== BUILD FAILED (exit code: $buildExitCode) ==="
++              exit $buildExitCode
++          }
++
++          Write-Host "`n=== Built wheel ==="
++          $wheels = Get-ChildItem dist\*.whl
++          foreach ($wheel in $wheels) {
++              Write-Host "  Wheel: $($wheel.Name)"
++              Write-Host "  Size: $([math]::Round($wheel.Length / 1MB, 2)) MB"
++          }
++        shell: powershell
++        env:
++          TORCH_CUDA_ARCH_LIST: "6.0 6.1 7.0 7.5 8.0 8.6 8.9 9.0"
++          MAX_JOBS: "2"
++
++      - name: Upload wheel artifact
++        uses: actions/upload-artifact@v4
++        with:
++          name: diffoctreerast-binary-wheel-py311-cu118-win_amd64
++          path: dist/*.whl
++          retention-days: 30
++
++      - name: Test wheel installation
++        run: |
++          Write-Host "=== Creating test environment ==="
++          python -m venv test_env
++          .\test_env\Scripts\Activate.ps1
++
++          Write-Host "`n=== Installing PyTorch in test env ==="
++          pip install torch==2.2.2 --extra-index-url https://download.pytorch.org/whl/cu118
++
++          Write-Host "`n=== Installing built wheel ==="
++          $wheel = Get-ChildItem dist\*.whl | Select-Object -First 1
++          pip install $wheel.FullName
++
++          Write-Host "`n=== Testing import ==="
++          python -c "import diffoctreerast; print('[OK] diffoctreerast imported successfully')"
++
++          Write-Host "`n=== Verifying pre-compiled extension ==="
++          python -c "import torch; import diffoctreerast._C; print('[OK] Pre-compiled CUDA extension found')"
++        shell: powershell
++
++      - name: Display build summary
++        run: |
++          Write-Host "`n=========================================="
++          Write-Host "✅ BUILD SUCCESSFUL!"
++          Write-Host "=========================================="
++          Write-Host "`nBuilt wheel:"
++          Get-ChildItem dist\*.whl | ForEach-Object {
++              Write-Host "  📦 $($_.Name)"
++              Write-Host "     Size: $([math]::Round($_.Length / 1MB, 2)) MB"
++          }
++          Write-Host "`n📥 To download:"
++          Write-Host "  1. Go to Actions tab in GitHub"
++          Write-Host "  2. Click on this workflow run"
++          Write-Host "  3. Download artifact from 'Artifacts' section"
++        shell: powershell
+diff --git a/setup.py b/setup.py
+index cc25e91..d3eb4cf 100755
+--- a/setup.py
++++ b/setup.py
+@@ -1,10 +1,35 @@
+ from setuptools import setup
+ from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+ import os
+-os.path.dirname(os.path.abspath(__file__))
++
++root_dir = os.path.dirname(os.path.abspath(__file__))
++
++# Compiler flags for Windows CUDA 11.8 + VS 2022 compatibility
++cxx_flags = []
++nvcc_flags = ["-I" + os.path.join(root_dir, "lib/glm/")]
++
++if os.name == 'nt':  # Windows
++    cxx_flags = [
++        '/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH',
++        '/D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS',
++    ]
++    nvcc_flags.extend([
++        '-allow-unsupported-compiler',
++        '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH',
++        '--expt-relaxed-constexpr',
++        '--expt-extended-lambda',
++    ])
++
++extra_compile_args = {
++    'cxx': cxx_flags,
++    'nvcc': nvcc_flags
++}
+ 
+ setup(
+     name="diffoctreerast",
++    version="0.1.0",
++    author="Jianfeng Xiang",
++    description="Differential Octree Rasterization for 3D Generation",
+     packages=['diffoctreerast'],
+     ext_modules=[
+         CUDAExtension(
+@@ -33,8 +58,9 @@ setup(
+                 # Main
+                 "src/ext.cpp"
+             ],
+-            extra_compile_args={"nvcc": ["-I" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib/glm/")]})
+-        ],
++            extra_compile_args=extra_compile_args,
++        )
++    ],
+     cmdclass={
+         'build_ext': BuildExtension
+     }
+-- 
+2.43.0
