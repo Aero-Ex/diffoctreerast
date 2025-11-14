@@ -22,6 +22,16 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('setup.py') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ hashFiles('setup.py') }}-
+            ${{ runner.os }}-pip-
+
       - name: Install CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.21
         with:
@@ -39,10 +49,27 @@ jobs:
           where.exe cl.exe
         shell: powershell
 
+      - name: Cache PyTorch
+        uses: actions/cache@v4
+        continue-on-error: true
+        id: pytorch-cache
+        with:
+          path: ${{ env.pythonLocation }}\Lib\site-packages\torch*
+          key: ${{ runner.os }}-pytorch-2.2.2-cu118-${{ env.pythonLocation }}
+          restore-keys: |
+            ${{ runner.os }}-pytorch-2.2.2-cu118-
+
       - name: Install PyTorch
+        if: steps.pytorch-cache.outputs.cache-hit != 'true'
         run: |
           Write-Host "=== Installing PyTorch ==="
           pip install torch==2.2.2 --extra-index-url https://download.pytorch.org/whl/cu118
+          python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+        shell: powershell
+
+      - name: Verify PyTorch installation
+        run: |
+          Write-Host "=== Verifying PyTorch ==="
           python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
         shell: powershell
 
