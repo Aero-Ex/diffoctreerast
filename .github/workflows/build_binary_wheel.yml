@@ -177,17 +177,17 @@ jobs:
       - name: Display build summary
         run: |
           Write-Host "`n=========================================="
-          Write-Host "✅ BUILD SUCCESSFUL!"
+          Write-Host "BUILD SUCCESSFUL!"
           Write-Host "=========================================="
           Write-Host "`nBuilt wheel:"
           Get-ChildItem dist\*.whl | ForEach-Object {
-              Write-Host "  📦 $($_.Name)"
-              Write-Host "     Size: $([math]::Round($_.Length / 1MB, 2)) MB"
+              Write-Host "  $($_.Name)"
+              Write-Host "  Size: $([math]::Round($_.Length / 1MB, 2)) MB"
           }
-          Write-Host "`n📥 To download:"
+          Write-Host "`nTo download:"
           Write-Host "  1. Go to Actions tab in GitHub"
           Write-Host "  2. Click on this workflow run"
           Write-Host "  3. Download artifact from 'Artifacts' section"
-          Write-Host "`n✨ This is a TRUE BINARY WHEEL (cp311-cp311-win_amd64)"
-          Write-Host "   No MSVC Build Tools required for installation!"
+          Write-Host "`nThis is a TRUE BINARY WHEEL (cp311-cp311-win_amd64)"
+          Write-Host "No MSVC Build Tools required for installation!"
         shell: powershell
