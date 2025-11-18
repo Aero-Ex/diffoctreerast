@@ -35,7 +35,7 @@ jobs:
       - name: Install CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.29
         with:
-          cuda: '11.8.0'
+          cuda: '12.4.0'
           method: 'network'
           use-github-cache: 'false'
           use-local-cache: 'false'
@@ -80,7 +80,7 @@ jobs:
         if: steps.pytorch-cache.outputs.cache-hit != 'true'
         run: |
           Write-Host "=== Installing PyTorch ==="
-          pip install torch==2.2.2 --extra-index-url https://download.pytorch.org/whl/cu118
+          pip install torch==2.6.0 --extra-index-url https://download.pytorch.org/whl/cu124
           python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
         shell: powershell
 
@@ -172,7 +172,7 @@ jobs:
           .\test_env\Scripts\Activate.ps1
 
           Write-Host "`n=== Installing PyTorch in test env ==="
-          pip install torch==2.2.2 --extra-index-url https://download.pytorch.org/whl/cu118
+          pip install torch==2.6.0 --extra-index-url https://download.pytorch.org/whl/cu124
 
           Write-Host "`n=== Installing built wheel ==="
           $wheel = Get-ChildItem dist\*.whl | Select-Object -First 1
